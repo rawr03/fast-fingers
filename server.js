@@ -13,25 +13,35 @@ app.use(express.static('public'));
 
 const CATEGORIES = {
 corporate: [
-"compliance", "infrastructure", "optimization", "synergy",
-"protocol", "scalability", "framework", "deployment",
-"bandwidth", "analytics", "leverage", "metrics",
-"integration", "redundancy", "implementation"
+    "compliance", "infrastructure", "optimization", "synergy",
+    "protocol", "scalability", "framework", "deployment",
+    "bandwidth", "analytics", "leverage", "metrics",
+    "integration", "redundancy", "implementation", "innovation", 
+    "industry", "equipment", "system", "robots", "platform", 
+    "solutions", "knowledge", "core", "screens", "products", 
+    "labs", "manufacturing", "value", "modern", "nano", 
+    "formality", "conversion", "informatics", "team"
 ],
 
 
 coding: [
-    "javascript", "websocket", "asynchronous", "repository",
+    "internet", "devices", "password", "virtual", "javascript", 
+    "websocket", "asynchronous", "repository", "hardware",
     "compilation", "frontend", "middleware", "encryption",
     "deployment", "database", "algorithm", "callback",
-    "framework", "variable", "interface"
+    "framework", "variable", "interface", "technician", 
+    "developing", "processing", "optimization", "focused",
+    "program", "automation", "algortihm", "software"
 ],
 
 general: [
     "marathon", "velocity", "keyboard", "championship",
     "accelerate", "precision", "countdown", "lightning",
     "frantic", "victory", "champion", "sprint",
-    "trophy", "focus", "dynamic"
+    "trophy", "focus", "dynamic", "comfort", "discipline", 
+    "stack", "component", "tool", "create", "improve", 
+    "consumer", "marketing", "source", "evolution", "lead",
+    "learning", "commercial", "interface", "service"
 ]
 
 
@@ -158,20 +168,21 @@ socket.on('triggerNewRound', (data) => {
     if (difficulty === 'easy') {
         gameState.wordTimerDuration = 7;
     } else if (difficulty === 'hard') {
-        gameState.wordTimerDuration = 2;
+        gameState.wordTimerDuration = 3;
     } else {
-        gameState.wordTimerDuration = 4;
+        gameState.wordTimerDuration = 5;
     }
 
     // Reset everyone for the new round.
     for (const id in gameState.players) {
         const player = gameState.players[id];
 
-        player.score = 0;
+        // Score persists across rounds.
         player.multiplier = 1;
-        player.wordsTyped = 0;
         player.currentWordChars = 0;
-        player.currentWord = getRandomWord(gameState.currentCategory);
+        player.currentWord = getRandomWord(
+            gameState.currentCategory
+        );
     }
 
     // Give each player their first word.
@@ -301,6 +312,8 @@ socket.on('disconnect', () => {
 
     sendStateToAll();
 });
+
+
 
 
 });

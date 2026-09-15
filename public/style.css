@@ -796,3 +796,53 @@ button:disabled {
         font-size: 15px;
     }
 }
+
+/* =========================================================
+   WORD TRANSITION
+   ========================================================= */
+
+.target-box {
+    transition:
+        opacity 0.15s ease,
+        transform 0.15s ease;
+}
+
+.target-box.word-transition {
+    opacity: 0;
+    transform: scale(0.96);
+}
+
+.target-box.word-arrival {
+    animation: wordArrival 0.35s ease-out;
+}
+
+@keyframes wordArrival {
+
+    0% {
+        opacity: 0;
+        transform: scale(1.08);
+        filter: blur(4px);
+    }
+
+    60% {
+        opacity: 1;
+        transform: scale(0.98);
+        filter: blur(0);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.target-box.transition-message {
+    color: var(--cyan);
+
+    font-size: 16px;
+
+    letter-spacing: 3px;
+
+    text-shadow:
+        0 0 8px rgba(0, 234, 255, 0.7);
+}
