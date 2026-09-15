@@ -1,0 +1,905 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>BREACH//PROTOCOL</title>
+
+    <link rel="stylesheet" href="/style.css">
+
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+
+<!-- =============================================================
+     LOGIN
+     ============================================================= -->
+
+<div id="login">
+
+    <div class="login-logo">
+
+        <h1>BREACH</h1>
+
+        <p>NETWORK INFILTRATION // MULTIPLAYER PROTOCOL</p>
+
+    </div>
+
+    <div class="terminal-line">
+        Secure connection required
+    </div>
+
+    <div class="terminal-line">
+        Identity verification initialized
+    </div>
+
+    <label for="username">
+        Operator Identification
+    </label>
+
+    <input
+        type="text"
+        id="username"
+        placeholder="ENTER CODENAME..."
+        maxlength="20"
+        autocomplete="off"
+        spellcheck="false"
+    >
+
+    <button onclick="connectToServer()">
+        [ CONNECT TO NETWORK ]
+    </button>
+
+</div>
+
+
+<!-- =============================================================
+     GAME
+     ============================================================= -->
+
+<div class="container" id="game" style="display:none;">
+
+    <div class="main-panel">
+
+        <div class="terminal-header">
+
+            <div class="brand">
+                BREACH//PROTOCOL
+            </div>
+
+            <div class="status">
+                NETWORK ONLINE
+            </div>
+
+        </div>
+
+
+        <!-- HOST CONTROLS -->
+
+        <div id="hostControls">
+
+            <div class="section-title">
+                HOST CONTROL TERMINAL
+            </div>
+
+            <label for="hostCategory">
+                Payload Category
+            </label>
+
+            <select id="hostCategory">
+
+                <option value="corporate">
+                    CORPORATE // BUZZWORDS
+                </option>
+
+                <option value="coding">
+                    TECH // ENGINEERING
+                </option>
+
+                <option value="general">
+                    GENERAL // SPEED
+                </option>
+
+            </select>
+
+
+            <label for="hostDifficulty">
+                Security Level
+            </label>
+
+            <select id="hostDifficulty">
+
+                <option value="easy">
+                    LOW SECURITY // 7s
+                </option>
+
+                <option value="medium" selected>
+                    STANDARD SECURITY // 4s
+                </option>
+
+                <option value="hard">
+                    MAXIMUM SECURITY // 2s
+                </option>
+
+            </select>
+
+            <button
+                id="startBtn"
+                onclick="requestNewRound()"
+            >
+                [ INITIATE BREACH ]
+            </button>
+
+        </div>
+
+
+        <!-- NON-HOST MESSAGE -->
+
+        <div id="playerWaitingMsg">
+
+            Awaiting host authorization.
+            Stand by for incoming target packet...
+
+        </div>
+
+
+        <!-- TARGET -->
+
+        <div class="target-container">
+
+            <div class="target-label">
+                Incoming Data
+            </div>
+
+            <div
+                class="target-box"
+                id="targetText"
+            >
+                CONNECTION ESTABLISHED
+            </div>
+
+        </div>
+
+
+        <!-- TIMER -->
+
+        <div
+            class="timer-banner"
+            id="timerDisplay"
+        >
+            WORD TIME REMAINING: --s
+        </div>
+
+
+        <!-- MULTIPLIER -->
+
+        <div
+            class="multiplier-status"
+            id="multiplierDisplay"
+        >
+            CURRENT MULTIPLIER: 1x
+        </div>
+
+
+        <!-- INPUT -->
+
+        <input
+            type="text"
+            id="typeInput"
+            placeholder="WAITING FOR TARGET PACKET..."
+            disabled
+            autocomplete="off"
+            spellcheck="false"
+        >
+
+    </div>
+
+
+    <!-- =========================================================
+         SIDEBAR
+         ========================================================= -->
+
+    <div class="sidebar">
+
+        <div class="scoreboard-header">
+
+            <div class="scoreboard-title">
+                LIVE OPERATORS
+            </div>
+
+            <div class="round-counter">
+                ROUND:
+                <span id="roundCounter">0</span>
+            </div>
+
+        </div>
+
+        <div id="leaderboard"></div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+    let socket = null;
+
+    let currentWord = "";
+
+    let wordTimer = null;
+
+    let timeLeft = 0;
+
+    let maxTimeAllowed = 4;
+
+    let myId = null;
+
+    let wordPenaltyLocked = false;
+
+
+    const inputField =
+        document.getElementById("typeInput");
+
+
+    /* =========================================================
+       PASTE PROTECTION
+       ========================================================= */
+
+    inputField.addEventListener("paste", (event) => {
+
+        event.preventDefault();
+
+        if (!wordPenaltyLocked) {
+            penalizePlayer();
+        }
+
+    });
+
+
+    /* =========================================================
+       CONNECT
+       ========================================================= */
+
+    function connectToServer() {
+
+        const name =
+            document
+                .getElementById("username")
+                .value
+                .trim();
+
+
+        if (!name) {
+
+            alert(
+                "IDENTIFICATION ERROR: " +
+                "Codename cannot be empty."
+            );
+
+            return;
+        }
+
+
+        socket = io();
+
+
+        socket.on("connect", () => {
+
+            myId = socket.id;
+
+
+            document.getElementById("login")
+                .style.display = "none";
+
+            document.getElementById("game")
+                .style.display = "grid";
+
+
+            socket.emit("joinGame", name);
+
+        });
+
+
+        socket.on("connect_error", (error) => {
+
+            console.error(
+                "Socket connection failed:",
+                error
+            );
+
+            alert(
+                "NETWORK ERROR: " +
+                "Unable to establish secure connection."
+            );
+
+        });
+
+
+        /* =====================================================
+           LIVE PLAYER STATE
+           ===================================================== */
+
+        socket.on("updatePlayers", (data) => {
+
+            document.getElementById("roundCounter")
+                .innerText = data.totalRounds;
+
+
+            /* HOST */
+
+            if (data.hostId === myId) {
+
+            document.getElementById("hostControls")
+                .style.display =
+                data.roundActive
+                    ? "none"
+                    : "block";
+
+            document.getElementById("playerWaitingMsg")
+                .style.display = "none";
+
+            // Keep the button synchronized with the server.
+            document.getElementById("startBtn")
+                .disabled = data.roundActive;
+
+        }
+
+            /* PLAYER */
+
+            else {
+
+                document.getElementById("hostControls")
+                    .style.display = "none";
+
+
+                document.getElementById("playerWaitingMsg")
+                    .style.display =
+                    data.roundActive
+                        ? "none"
+                        : "block";
+
+            }
+
+
+            /* PERSONAL MULTIPLIER */
+
+            if (data.players[myId]) {
+
+                document.getElementById(
+                    "multiplierDisplay"
+                ).innerText =
+                    `CURRENT MULTIPLIER: ` +
+                    `${data.players[myId].multiplier}x`;
+
+            }
+
+
+            /* SORT PLAYERS */
+
+            const sortedPlayers =
+                Object.entries(data.players)
+
+                    .map(([id, player]) => ({
+                        id,
+                        ...player
+                    }))
+
+                    .sort(
+                        (a, b) =>
+                            b.score - a.score
+                    );
+
+
+            const leaderboard =
+                document.getElementById(
+                    "leaderboard"
+                );
+
+
+            leaderboard.innerHTML = "";
+
+
+            sortedPlayers.forEach(
+                (player, index) => {
+
+                    const isHost =
+                        player.id === data.hostId;
+
+
+                    const wordLength =
+                        player.currentWord
+                            ? player.currentWord.length
+                            : 0;
+
+
+                    const typed =
+                        player.currentWordChars || 0;
+
+
+                    let progressPercent = 0;
+
+
+                    if (wordLength > 0) {
+
+                        progressPercent =
+                            Math.floor(
+                                (typed / wordLength) * 100
+                            );
+
+                    }
+
+
+                    progressPercent =
+                        Math.max(
+                            0,
+                            Math.min(
+                                100,
+                                progressPercent
+                            )
+                        );
+
+
+                    const barClass =
+                        isHost
+                            ? "progress-fill host-progress"
+                            : "progress-fill";
+
+
+                    leaderboard.innerHTML += `
+
+                        <div class="player-card">
+
+                            ${
+                                isHost
+                                    ? `
+                                        <span class="host-badge">
+                                            HOST
+                                        </span>
+                                      `
+                                    : ""
+                            }
+
+                            <span class="rank-badge">
+                                #${index + 1}
+                            </span>
+
+                            <strong>
+                                ${escapeHtml(
+                                    player.name
+                                )}
+                            </strong>
+
+                            <div class="stat-line">
+
+                                SCORE:
+                                <strong>
+                                    ${player.score}
+                                </strong>
+
+                                &nbsp;//
+
+                                STREAK:
+                                <strong>
+                                    ${player.multiplier}x
+                                </strong>
+
+                            </div>
+
+                            <div class="stat-line">
+
+                                PACKETS DECRYPTED:
+                                <strong>
+                                    ${player.wordsTyped}
+                                </strong>
+
+                            </div>
+
+                            <div class="progress-label">
+
+                                <span>
+                                    TARGET PROGRESS
+                                </span>
+
+                                <span>
+                                    ${progressPercent}%
+                                </span>
+
+                            </div>
+
+                            <div class="progress-bar">
+
+                                <div
+                                    class="${barClass}"
+                                    style="
+                                        width:
+                                        ${progressPercent}%
+                                    "
+                                ></div>
+
+                            </div>
+
+                        </div>
+
+                    `;
+
+                }
+            );
+
+        });
+
+
+        /* =====================================================
+           ROUND START
+           ===================================================== */
+
+        socket.on("startRound", (config) => {
+
+            maxTimeAllowed =
+                config.duration;
+
+
+            document.getElementById("startBtn")
+                .disabled = true;
+
+
+            inputField.disabled = false;
+
+
+            loadWordTarget(
+                config.firstWord
+            );
+
+        });
+
+
+        /* =====================================================
+           NEXT WORD
+           ===================================================== */
+
+        socket.on(
+            "nextWordDelivery",
+            (data) => {
+
+                if (typeof data === "string") {
+
+                    loadWordTarget(data);
+
+                }
+
+                else {
+
+                    loadWordTarget(
+                        data.word
+                    );
+
+
+                    if (data.duration) {
+
+                        maxTimeAllowed =
+                            data.duration;
+
+                    }
+
+                }
+
+            }
+        );
+
+
+        /* =====================================================
+           ROUND END
+           ===================================================== */
+
+        socket.on("roundEnd", () => {
+
+            clearInterval(wordTimer);
+
+
+            inputField.value = "";
+
+            inputField.disabled = true;
+
+
+            document.getElementById(
+                "targetText"
+            ).innerText =
+                "CONNECTION TERMINATED";
+
+
+            document.getElementById(
+                "timerDisplay"
+            ).innerText =
+                "ROUND OVER // ACCESS DENIED";
+
+
+            alert(
+                "BREACH WINDOW CLOSED.\n\n" +
+                "Review the final operator rankings."
+            );
+
+        });
+
+    }
+
+
+    /* =========================================================
+       LOAD WORD
+       ========================================================= */
+
+    function loadWordTarget(word) {
+
+        currentWord = word;
+
+        wordPenaltyLocked = false;
+
+
+        document.getElementById(
+            "targetText"
+        ).innerText =
+            currentWord;
+
+
+        inputField.value = "";
+
+        inputField.disabled = false;
+
+        inputField.focus();
+
+
+        clearInterval(wordTimer);
+
+
+        timeLeft =
+            maxTimeAllowed;
+
+
+        updateTimerDisplay();
+
+
+        wordTimer =
+            setInterval(() => {
+
+                timeLeft--;
+
+                updateTimerDisplay();
+
+
+                if (timeLeft <= 0) {
+
+                    clearInterval(wordTimer);
+
+
+                    if (!wordPenaltyLocked) {
+
+                        penalizePlayer();
+
+                    }
+
+                }
+
+            }, 1000);
+
+    }
+
+
+    /* =========================================================
+       TIMER
+       ========================================================= */
+
+    function updateTimerDisplay() {
+
+        document.getElementById(
+            "timerDisplay"
+        ).innerText =
+            `WORD TIME REMAINING: ${timeLeft}s`;
+
+    }
+
+
+    /* =========================================================
+       TYPING
+       ========================================================= */
+
+    function handleInput() {
+
+        if (
+            !socket ||
+            !currentWord ||
+            wordPenaltyLocked
+        ) {
+            return;
+        }
+
+
+        const currentInput =
+            inputField.value;
+
+
+        /* Correct prefix */
+
+        if (
+            currentWord.startsWith(
+                currentInput
+            )
+        ) {
+
+            inputField.classList.remove(
+                "error-flash"
+            );
+
+
+            socket.emit(
+                "typeProgress",
+                currentInput.length
+            );
+
+
+            /* Complete */
+
+            if (
+                currentInput ===
+                currentWord
+            ) {
+
+                clearInterval(wordTimer);
+
+                socket.emit(
+                    "wordCompleted"
+                );
+
+            }
+
+        }
+
+        /* Incorrect */
+
+        else {
+
+            clearInterval(wordTimer);
+
+            penalizePlayer();
+
+        }
+
+    }
+
+
+    /* =========================================================
+       FAILURE
+       ========================================================= */
+
+    function penalizePlayer() {
+
+        if (
+            !socket ||
+            wordPenaltyLocked
+        ) {
+            return;
+        }
+
+
+        wordPenaltyLocked = true;
+
+
+        inputField.classList.add(
+            "error-flash"
+        );
+
+
+        socket.emit(
+            "wordFailed"
+        );
+
+
+        setTimeout(() => {
+
+            inputField.classList.remove(
+                "error-flash"
+            );
+
+        }, 400);
+
+    }
+
+
+    /* =========================================================
+       HOST START
+       ========================================================= */
+
+    function requestNewRound() {
+
+        if (!socket) {
+            return;
+        }
+
+
+        const category =
+            document.getElementById(
+                "hostCategory"
+            ).value;
+
+
+        const difficulty =
+            document.getElementById(
+                "hostDifficulty"
+            ).value;
+
+
+        socket.emit(
+            "triggerNewRound",
+            {
+                category,
+                difficulty
+            }
+        );
+
+    }
+
+
+    /* =========================================================
+       HTML ESCAPING
+       ========================================================= */
+
+    function escapeHtml(value) {
+
+        return String(value)
+
+            .replace(
+                /&/g,
+                "&amp;"
+            )
+
+            .replace(
+                /</g,
+                "&lt;"
+            )
+
+            .replace(
+                />/g,
+                "&gt;"
+            )
+
+            .replace(
+                /"/g,
+                "&quot;"
+            )
+
+            .replace(
+                /'/g,
+                "&#039;"
+            );
+
+    }
+
+
+    /* =========================================================
+       KEYBOARD INPUT
+       ========================================================= */
+
+    inputField.addEventListener(
+        "input",
+        handleInput
+    );
+
+
+    document
+        .getElementById("username")
+        .addEventListener(
+            "keydown",
+            (event) => {
+
+                if (event.key === "Enter") {
+
+                    connectToServer();
+
+                }
+
+            }
+        );
+
+</script>
+
+</body>
+</html>

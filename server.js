@@ -1,91 +1,312 @@
-server.js
-// Install dependencies first: npm install express socket.io
-
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
+
 const io = require('socket.io')(http, {
-    cors: { origin: "*" } // Allows connections from GitHub Pages or Vercel
+cors: {
+origin: "*"
+}
 });
 
-// A boring, corporate-sounding word bank to generate text blocks
-const WORD_BANK = [
-    "compliance", "infrastructure", "optimization", "synergy", "protocol", 
-    "scalability", "framework", "deployment", "bandwidth", "analytics", 
-    "implementation", "integration", "redundancy", "leverage", "metrics"
-];
+// Serve public/index.html
+app.use(express.static('public'));
 
-let gameState = {
-    players: {}, // Tracks { socketId: { name, score, progress } }
-    currentWords: "",
-    roundActive: false
+const CATEGORIES = {
+corporate: [
+"compliance", "infrastructure", "optimization", "synergy",
+"protocol", "scalability", "framework", "deployment",
+"bandwidth", "analytics", "leverage", "metrics",
+"integration", "redundancy", "implementation"
+],
+
+
+coding: [
+    "javascript", "websocket", "asynchronous", "repository",
+    "compilation", "frontend", "middleware", "encryption",
+    "deployment", "database", "algorithm", "callback",
+    "framework", "variable", "interface"
+],
+
+general: [
+    "marathon", "velocity", "keyboard", "championship",
+    "accelerate", "precision", "countdown", "lightning",
+    "frantic", "victory", "champion", "sprint",
+    "trophy", "focus", "dynamic"
+]
+
+
 };
 
-function generateRoundWords() {
-    // Pick 10 random words from the bank and join them
-    let shuffled = [...WORD_BANK].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 10).join(" ");
+let gameState = {
+players: {},
+roundActive: false,
+totalRounds: 0,
+hostId: null,
+currentCategory: "corporate",
+wordTimerDuration: 4,
+roundTimer: null
+};
+
+function assignHostIfEmpty() {
+const activeIds = Object.keys(gameState.players);
+
+
+if (
+    activeIds.length > 0 &&
+    (!gameState.hostId || !gameState.players[gameState.hostId])
+) {
+    gameState.hostId = activeIds[0];
+    gameState.players[gameState.hostId].isHost = true;
+}
+
+
+}
+
+function getRandomWord(category) {
+const bank = CATEGORIES[category] || CATEGORIES.corporate;
+return bank[Math.floor(Math.random() * bank.length)];
+}
+
+function sendStateToAll() {
+io.emit('updatePlayers', {
+players: gameState.players,
+hostId: gameState.hostId,
+totalRounds: gameState.totalRounds,
+roundActive: gameState.roundActive
+});
+}
+
+function endRound() {
+if (!gameState.roundActive) return;
+
+
+gameState.roundActive = false;
+
+if (gameState.roundTimer) {
+    clearTimeout(gameState.roundTimer);
+    gameState.roundTimer = null;
+}
+
+io.emit('roundEnd');
+sendStateToAll();
+
+console.log('Round ended.');
+
+
 }
 
 io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`);
+console.log(`User connected: ${socket.id}`);
 
-    // Join Game
-    socket.on('joinGame', (username) => {
-        gameState.players[socket.id] = { name: username, score: 0, progress: 0 };
-        io.emit('updatePlayers', gameState.players);
-        
-        // If a round is already running, send them the current text
-        if (gameState.roundActive) {
-            socket.emit('startRound', gameState.currentWords);
-        }
-    });
 
-    // Start a new round (Any player can trigger, or automate it)
-    socket.on('triggerNewRound', () => {
-        if (gameState.roundActive) return;
-        
-        gameState.roundActive = true;
-        gameState.currentWords = generateRoundWords();
-        
-        // Reset player round progress
-        for (let id in gameState.players) {
-            gameState.players[id].progress = 0;
-        }
+socket.on('joinGame', (username) => {
+    const cleanName = String(username || '').trim().slice(0, 20);
 
-        io.emit('startRound', gameState.currentWords);
-    });
+    if (!cleanName) return;
 
-    // Handle typing progress updates
-    socket.on('typeProgress', (typedLength) => {
-        if (!gameState.roundActive || !gameState.players[socket.id]) return;
+    gameState.players[socket.id] = {
+        name: cleanName,
+        score: 0,
+        multiplier: 1,
+        wordsTyped: 0,
+        currentWordChars: 0,
+        currentWord: "",
+        isHost: false
+    };
 
-        let totalLength = gameState.currentWords.length;
-        let percentage = Math.floor((typedLength / totalLength) * 100);
-        gameState.players[socket.id].progress = percentage;
+    assignHostIfEmpty();
 
-        // Broadcast updated progress to everyone for the live sidebar
-        io.emit('updatePlayers', gameState.players);
+    console.log(`${cleanName} joined the game.`);
 
-        // Check if they finished perfectly
-        if (percentage >= 100) {
-            gameState.roundActive = false;
-            // Award points: faster finish = higher score
-            gameState.players[socket.id].score += 10; 
-            
-            io.emit('roundEnd', {
-                winner: gameState.players[socket.id].name,
-                players: gameState.players
-            });
-        }
-    });
+    sendStateToAll();
 
-    socket.on('disconnect', () => {
-        delete gameState.players[socket.id];
-        io.emit('updatePlayers', gameState.players);
-    });
+    // If someone joins while a round is already running,
+    // give them a fresh word.
+    if (gameState.roundActive) {
+        const word = getRandomWord(gameState.currentCategory);
+
+        gameState.players[socket.id].currentWord = word;
+        gameState.players[socket.id].currentWordChars = 0;
+
+        socket.emit('startRound', {
+            firstWord: word,
+            duration: gameState.wordTimerDuration
+        });
+
+        sendStateToAll();
+    }
 });
 
-// Force port 443/80 standard traffic to trick firewalls
+socket.on('triggerNewRound', (data) => {
+    // Only the host can start a round.
+    if (socket.id !== gameState.hostId) return;
+
+    if (gameState.roundActive) return;
+
+    const category = CATEGORIES[data?.category]
+        ? data.category
+        : "corporate";
+
+    const difficulty = ["easy", "medium", "hard"].includes(data?.difficulty)
+        ? data.difficulty
+        : "medium";
+
+    gameState.roundActive = true;
+    gameState.totalRounds += 1;
+    gameState.currentCategory = category;
+
+    if (difficulty === 'easy') {
+        gameState.wordTimerDuration = 7;
+    } else if (difficulty === 'hard') {
+        gameState.wordTimerDuration = 2;
+    } else {
+        gameState.wordTimerDuration = 4;
+    }
+
+    // Reset everyone for the new round.
+    for (const id in gameState.players) {
+        const player = gameState.players[id];
+
+        player.score = 0;
+        player.multiplier = 1;
+        player.wordsTyped = 0;
+        player.currentWordChars = 0;
+        player.currentWord = getRandomWord(gameState.currentCategory);
+    }
+
+    // Give each player their first word.
+    for (const id in gameState.players) {
+        io.to(id).emit('startRound', {
+            firstWord: gameState.players[id].currentWord,
+            duration: gameState.wordTimerDuration
+        });
+    }
+
+    sendStateToAll();
+
+    console.log(
+        `Round ${gameState.totalRounds} started: ` +
+        `${category}, ${difficulty}, ${gameState.wordTimerDuration}s/word`
+    );
+
+    // 60-second global match timer.
+    gameState.roundTimer = setTimeout(() => {
+        endRound();
+    }, 60000);
+});
+
+// Called on every valid keystroke.
+socket.on('typeProgress', (charsTypedInCurrentWord) => {
+    if (!gameState.roundActive) return;
+
+    const player = gameState.players[socket.id];
+
+    if (!player) return;
+
+    let chars = Number(charsTypedInCurrentWord);
+
+    if (!Number.isFinite(chars)) {
+        return;
+    }
+
+    chars = Math.floor(chars);
+
+    // Don't allow the client to report more characters
+    // than the current word contains.
+    chars = Math.max(
+        0,
+        Math.min(chars, player.currentWord.length)
+    );
+
+    player.currentWordChars = chars;
+
+    sendStateToAll();
+});
+
+socket.on('wordCompleted', () => {
+    if (!gameState.roundActive) return;
+
+    const player = gameState.players[socket.id];
+
+    if (!player) return;
+
+    // Require the player to have reached the full word length.
+    if (
+        !player.currentWord ||
+        player.currentWordChars < player.currentWord.length
+    ) {
+        return;
+    }
+
+    // Award points using the current multiplier.
+    player.score += Math.round(10 * player.multiplier);
+    player.wordsTyped += 1;
+
+    // Increase multiplier by 0.2x, maximum 3x.
+    if (player.multiplier < 3) {
+        player.multiplier = Math.min(
+            3,
+            parseFloat((player.multiplier + 0.2).toFixed(1))
+        );
+    }
+
+    // Give this player their next word.
+    player.currentWord = getRandomWord(gameState.currentCategory);
+    player.currentWordChars = 0;
+
+    socket.emit('nextWordDelivery', {
+        word: player.currentWord,
+        duration: gameState.wordTimerDuration
+    });
+
+    sendStateToAll();
+});
+
+socket.on('wordFailed', () => {
+    if (!gameState.roundActive) return;
+
+    const player = gameState.players[socket.id];
+
+    if (!player) return;
+
+    // Reset streak.
+    player.multiplier = 1;
+
+    // Give the player a new word.
+    player.currentWord = getRandomWord(gameState.currentCategory);
+    player.currentWordChars = 0;
+
+    socket.emit('nextWordDelivery', {
+        word: player.currentWord,
+        duration: gameState.wordTimerDuration
+    });
+
+    sendStateToAll();
+});
+
+socket.on('disconnect', () => {
+    const player = gameState.players[socket.id];
+
+    if (player) {
+        console.log(`${player.name} disconnected.`);
+    }
+
+    delete gameState.players[socket.id];
+
+    // If the host leaves, assign a new host.
+    if (socket.id === gameState.hostId) {
+        gameState.hostId = null;
+        assignHostIfEmpty();
+    }
+
+    sendStateToAll();
+});
+
+
+});
+
 const PORT = process.env.PORT || 5500;
-http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+http.listen(PORT, () => {
+console.log(`Server running on port ${PORT}`);
+});
