@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Enterprise System - Terminal v4.1.2</title>
+    <!-- Load Socket.io client -->
+    <script src="https://socket.io"></script>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #f4f4f6;
+            color: #333;
+            margin: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .main-panel {
+            flex: 3;
+            background: #fff;
+            padding: 20px;
+            border: 1px solid #ccc;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+        }
+        .sidebar {
+            flex: 1;
+            background: #eaeaea;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+        .target-box {
+            background: #222;
+            color: #00ff00;
+            padding: 15px;
+            font-size: 18px;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4A90E2;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .player-row {
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .progress-bar {
+            background: #ddd;
+            height: 8px;
+            width: 100%;
+        }
+        .progress-fill {
+            background: #4A90E2;
+            height: 100%;
+            width: 0%;
+        }
+    </style>
+</head>
+<body>
+
+<div id="login">
+    <h2>Internal Terminal Connection</h2>
+    <input type="text" id="username" placeholder="Employee ID / Name...">
+    <button onclick="connectToServer()">Connect</button>
+</div>
+
+<div class="container" id="game" style="display:none;">
+    <div class="main-panel">
+        <h3>System Prompt Verification</h3>
+        <div class="target-box" id="targetText">Waiting for next transmission...</div>
+        <input type="text" id="typeInput" placeholder="Type target string here..." disabled oninput="handleInput()">
+        <br><br>
+        <button id="startBtn" onclick="requestNewRound()">Initialize Next Round</button>
+    </div>
+    
+    <div class="sidebar">
+        <h3>Active Terminals</h3>
+        <div id="leaderboard"></div>
+    </div>
+</div>
+
+<script>
+    let socket;
+    let targetString = "";
+    
+    // Connect to your server domain (Change this when deploying)
+    const SERVER_URL = "http://localhost:5500"; 
+
+    function connectToServer() {
+        const name = document.getElementById('username').value.trim();
+        if(!name) return alert("Enter a name");
+
+        socket = io(SERVER_URL);
+
+        socket.on('connect', () => {
+            document.getElementById('login').style.display = 'none';
+            document.getElementById('game').style.display = 'flex';
+            socket.emit('joinGame', name);
+        });
+
+        // Update Leaderboard and Progress Bars
+        socket.on('updatePlayers', (players) => {
+            const lb = document.getElementById('leaderboard');
+            lb.innerHTML = "";
+            Object.values(players).forEach(p => {
+                lb.innerHTML += `
+                    <div class="player-row">
+                        <strong>${p.name}</strong> - Score: ${p.score}
+                        <div class="progress-bar"><div class="progress-fill" style="width: ${p.progress}%"></div></div>
+                    </div>`;
+            });
+        });
+
+        // Round Start
+        socket.on('startRound', (text) => {
+            targetString = text;
+            document.getElementById('targetText').innerText = targetString;
+            const input = document.getElementById('typeInput');
+            input.value = "";
+            input.disabled = false;
+            input.focus();
+            document.getElementById('startBtn').disabled = true;
+        });
+
+        // Round End
+        socket.on('roundEnd', (data) => {
+            document.getElementById('typeInput').disabled = true;
+            document.getElementById('startBtn').disabled = false;
+            alert(`Transmission Confirmed. Winner: ${data.winner}`);
+        });
+    }
+
+    function requestNewRound() {
+        socket.emit('triggerNewRound');
+    }
+
+    function handleInput() {
+        const currentInput = document.getElementById('typeInput').value;
+        
+        // Strict typing rule: Player must match the target text characters exactly so far
+        if (targetString.startsWith(currentInput)) {
+            // Send length of matching characters back to server to calculate %
+            socket.emit('typeProgress', currentInput.length);
+        } else {
+            // Visual feedback if they made a mistake (optional)
+        }
+    }
+</script>
+</body>
+</html>
